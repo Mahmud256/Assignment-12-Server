@@ -187,7 +187,7 @@ async function run() {
       const query = { _id: new ObjectId(id) }
       const result = await bookCollection.deleteOne(query);
       res.send(result);
-    });
+    })
 
 
 
