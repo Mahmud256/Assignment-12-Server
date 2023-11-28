@@ -3,6 +3,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require('dotenv').config();
 const cors = require("cors");
 const jwt = require('jsonwebtoken');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const app = express();
 
 const port = process.env.PORT || 5000;
@@ -27,6 +28,7 @@ async function run() {
     const apartmentCollection = client.db("assignment-12").collection("apartment");
     const bookCollection = client.db("assignment-12").collection("books");
     const userCollection = client.db("assignment-12").collection("users");
+    const paymentCollection = client.db("assignment-12").collection("payments");
 
 
 
@@ -86,12 +88,12 @@ async function run() {
       res.send(result);
     });
 
-    app.get('/users/admin/:email',verifyToken, async (req, res) => {
+    app.get('/users/admin/:email', verifyToken, async (req, res) => {
       const email = req.params.email;
 
-       if (email !== req.decoded.email) {
-         return res.status(403).send({ message: 'forbidden access' })
-       }
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: 'forbidden access' })
+      }
 
       const query = { email: email };
       const user = await userCollection.findOne(query);
@@ -102,12 +104,12 @@ async function run() {
       res.send({ admin });
     })
 
-    app.get('/users/member/:email',verifyToken, async (req, res) => {
+    app.get('/users/member/:email', verifyToken, async (req, res) => {
       const email = req.params.email;
 
-       if (email !== req.decoded.email) {
-         return res.status(403).send({ message: 'forbidden access' })
-       }
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: 'forbidden access' })
+      }
 
       const query = { email: email };
       const user = await userCollection.findOne(query);
@@ -131,7 +133,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch('/users/admin/:id',verifyToken, verifyAdmin, async (req, res) => {
+    app.patch('/users/admin/:id', verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
       const updatedDoc = {
@@ -143,7 +145,7 @@ async function run() {
       res.send(result);
     })
 
-    app.patch('/users/member/:id',verifyToken, verifyAdmin, async (req, res) => {
+    app.patch('/users/member/:id', verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
       const updatedDoc = {
@@ -155,12 +157,31 @@ async function run() {
       res.send(result);
     })
 
-    app.delete('/users/:id',verifyToken, async (req, res) => {
+    app.delete('/users/:id', verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
-      const query = { _id: new ObjectId(id) }
-      const result = await userCollection.deleteOne(query);
-      res.send(result);
-    })
+      const query = { _id: new ObjectId(id) };
+      const user = await userCollection.findOne(query);
+    
+      if (!user) {
+        return res.status(404).send({ message: 'User not found' });
+      }
+    
+      if (user.role === 'admin' || user.role === 'member') {
+        // Update the role to 'normal' instead of deleting
+        const updateDoc = {
+          $set: {
+            role: ''
+          }
+        };
+        const updateResult = await userCollection.updateOne(query, updateDoc);
+        return res.send(updateResult);
+      } else {
+        // Delete all data for normal users
+        const deleteResult = await userCollection.deleteOne(query);
+        return res.send(deleteResult);
+      }
+    });
+    
 
     //------------------ apartment Releted Api ------------------
     app.get("/apartment", async (req, res) => {
@@ -180,24 +201,6 @@ async function run() {
       const result = await apartmentCollection.insertOne(item);
       res.send(result);
     });
-
-    app.patch('/apartment/:id', async (req, res) => {
-      const item = req.body;
-      const id = req.params.id;
-      const filter = { _id: new ObjectId(id) }
-      const updatedDoc = {
-        $set: {
-          name: item.name,
-          category: item.category,
-          price: item.price,
-          recipe: item.recipe,
-          image: item.image
-        }
-      }
-
-      const result = await apartmentCollection.updateOne(filter, updatedDoc)
-      res.send(result);
-    })
 
     app.delete('/apartment/:id', async (req, res) => {
       const id = req.params.id;
@@ -229,7 +232,116 @@ async function run() {
       res.send(result);
     });
 
+    //------------------ payment Releted Api ------------------
 
+    app.post('/create-payment-intent', async (req, res) => {
+      const { rent } = req.body;
+      const amount = parseInt(rent * 100);
+      console.log(amount, 'amount inside the intent')
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: 'usd',
+        payment_method_types: ['card']
+      });
+
+      res.send({
+        clientSecret: paymentIntent.client_secret
+      })
+    });
+
+
+    app.get('/payments/:email', verifyToken, async (req, res) => {
+      const query = { email: req.params.email }
+      if (req.params.email !== req.decoded.email) {
+        return res.status(403).send({ message: 'forbidden access' });
+      }
+      const result = await paymentCollection.find(query).toArray();
+      res.send(result);
+    })
+
+    app.post('/payments', async (req, res) => {
+      const payment = req.body;
+      const paymentResult = await paymentCollection.insertOne(payment);
+
+      //  carefully delete each item from the book
+      console.log('payment info', payment);
+      const query = {
+        _id: {
+          $in: payment.bookIds.map(id => new ObjectId(id))
+        }
+      };
+
+      const deleteResult = await bookCollection.deleteMany(query);
+
+      res.send({ paymentResult, deleteResult });
+    })
+
+
+    // stats or analytics
+    app.get('/admin-stats', verifyToken, verifyAdmin, async (req, res) => {
+      const users = await userCollection.estimatedDocumentCount();
+      const apartmentRooms = await apartmentCollection.estimatedDocumentCount();
+      const books = await paymentCollection.estimatedDocumentCount();
+
+      const result = await paymentCollection.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalRevenue: {
+              $sum: '$rent'
+            }
+          }
+        }
+      ]).toArray();
+
+      const revenue = result.length > 0 ? result[0].totalRevenue : 0;
+
+      res.send({
+        users,
+        apartmentRooms,
+        books,
+        revenue
+      })
+    })
+
+    // using aggregate pipeline
+    // app.get('/booked-stats', verifyToken, verifyAdmin, async (req, res) => {
+    //   const result = await paymentCollection.aggregate([
+    //     {
+    //       $unwind: '$apartmentRoomIds'
+    //     },
+    //     {
+    //       $lookup: {
+    //         from: 'apartment',
+    //         localField: 'apartmentRoomIds',
+    //         foreignField: '_id',
+    //         as: 'apartmentRooms'
+    //       }
+    //     },
+    //     {
+    //       $unwind: '$apartmentRooms'
+    //     },
+    //     {
+    //       $group: {
+    //         _id: '$apartmentRooms.aprtno',
+    //         quantity: { $sum: 1 },
+    //         revenue: { $sum: '$apartmentRooms.rent' }
+    //       }
+    //     },
+    //     {
+    //       $project: {
+    //         _id: 0,
+    //         aprtno: '$_id',
+    //         quantity: '$quantity',
+    //         revenue: '$revenue'
+    //       }
+    //     }
+    //   ]).toArray();
+
+    //   res.send(result);
+
+    // })
 
 
 
