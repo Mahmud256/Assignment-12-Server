@@ -27,8 +27,10 @@ async function run() {
 
     const apartmentCollection = client.db("assignment-12").collection("apartment");
     const bookCollection = client.db("assignment-12").collection("books");
+    const agreementCollection = client.db("assignment-12").collection("agree");
     const userCollection = client.db("assignment-12").collection("users");
     const paymentCollection = client.db("assignment-12").collection("payments");
+    const announcementCollection = client.db("assignment-12").collection("announcement");
 
 
 
@@ -161,11 +163,11 @@ async function run() {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const user = await userCollection.findOne(query);
-    
+
       if (!user) {
         return res.status(404).send({ message: 'User not found' });
       }
-    
+
       if (user.role === 'admin' || user.role === 'member') {
         // Update the role to 'normal' instead of deleting
         const updateDoc = {
@@ -181,7 +183,7 @@ async function run() {
         return res.send(deleteResult);
       }
     });
-    
+
 
     //------------------ apartment Releted Api ------------------
     app.get("/apartment", async (req, res) => {
@@ -232,8 +234,77 @@ async function run() {
       res.send(result);
     });
 
-    //------------------ payment Releted Api ------------------
 
+    // ------------------ agreement Releted Api ------------------
+    app.get("/agree", async (req, res) => {
+      const result = await agreementCollection.find().toArray();
+      res.send(result);
+    });
+
+    app.post('/agree', async (req, res) => {
+      const agreement = req.body;
+      const result = await agreementCollection.insertOne(agreement);
+      res.send(result);
+    });
+
+    app.patch('/agree/:id', async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          role: 'member',
+          status: 'active'
+        }
+      };
+      const result = await agreementCollection.updateOne(filter, updatedDoc);
+    
+      // Check if the agreement update was successful
+      if (result.modifiedCount === 1) {
+        // Find the corresponding user in userCollection using the email from agreementCollection
+        const agreement = await agreementCollection.findOne(filter);
+        const userEmail = agreement.email;
+        
+        // Update the userCollection with the new role
+        const userFilter = { email: userEmail };
+        const userUpdateDoc = {
+          $set: {
+            role: 'member'
+          }
+        };
+        await userCollection.updateOne(userFilter, userUpdateDoc);
+        
+        res.send({ message: 'Agreement updated successfully, and user role updated.' });
+      } else {
+        res.status(404).send({ message: 'Agreement not found' });
+      }
+    });
+
+    app.delete('/agree/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await agreementCollection.deleteOne(query);
+      res.send(result);
+    });
+    
+
+
+    // ------------------ announcement Releted Api ------------------
+    app.post('/announcement', async (req, res) => {
+      const announce = req.body;
+      const result = await announcementCollection.insertOne(announce);
+      res.send(result);
+    });
+
+    app.get("/announcement", async (req, res) => {
+      const result = await announcementCollection.find().toArray();
+      res.send(result);
+    });
+
+
+
+
+
+    //------------------ payment Releted Api ------------------
     app.post('/create-payment-intent', async (req, res) => {
       const { rent } = req.body;
       const amount = parseInt(rent * 100);
