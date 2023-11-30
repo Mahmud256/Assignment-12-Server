@@ -10,6 +10,15 @@ const port = process.env.PORT || 5000;
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.5cknjnc.mongodb.net/?retryWrites=true&w=majority`;
 
+app.use(cors(
+  {
+  origin: [ 
+    'https://assignment-12-6f6d3.web.app'
+  ],
+  credentials: true
+}
+));
+app.use(express.json());
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -362,31 +371,73 @@ async function run() {
 
 
     // stats or analytics
-    app.get('/admin-stats', verifyToken, verifyAdmin, async (req, res) => {
-      const users = await userCollection.estimatedDocumentCount();
-      const apartmentRooms = await apartmentCollection.estimatedDocumentCount();
-      const books = await paymentCollection.estimatedDocumentCount();
+    // app.get('/admin-stats', verifyToken, verifyAdmin, async (req, res) => {
+    //   const users = await userCollection.estimatedDocumentCount();
+    //   const apartmentRooms = await apartmentCollection.estimatedDocumentCount();
+    //   const books = await paymentCollection.estimatedDocumentCount();
 
-      const result = await paymentCollection.aggregate([
-        {
-          $group: {
-            _id: null,
-            totalRevenue: {
-              $sum: '$rent'
+    //   const result = await paymentCollection.aggregate([
+    //     {
+    //       $group: {
+    //         _id: null,
+    //         totalRevenue: {
+    //           $sum: '$rent'
+    //         }
+    //       }
+    //     }
+    //   ]).toArray();
+
+    //   const revenue = result.length > 0 ? result[0].totalRevenue : 0;
+    //   const percentage = apartmentRooms/books;
+
+    //   res.send({
+    //     users,
+    //     apartmentRooms,
+    //     books,
+    //     percentage,
+    //     revenue
+    //   })
+    // })
+
+    app.get('/admin-stats', verifyToken, verifyAdmin, async (req, res) => {
+      try {
+        const users = await userCollection.estimatedDocumentCount();
+        const totalRooms = await apartmentCollection.estimatedDocumentCount();
+        const bookedRooms = await paymentCollection.estimatedDocumentCount();
+    
+        const availableRooms = totalRooms - bookedRooms;
+    
+        const availableRoomsPercentage = (availableRooms / totalRooms) * 100;
+        const bookedRoomsPercentage = (bookedRooms / totalRooms) * 100;
+    
+        const result = await paymentCollection.aggregate([
+          {
+            $group: {
+              _id: null,
+              totalRevenue: {
+                $sum: '$rent'
+              }
             }
           }
-        }
-      ]).toArray();
-
-      const revenue = result.length > 0 ? result[0].totalRevenue : 0;
-
-      res.send({
-        users,
-        apartmentRooms,
-        books,
-        revenue
-      })
-    })
+        ]).toArray();
+    
+        const revenue = result.length > 0 ? result[0].totalRevenue : 0;
+    
+        res.send({
+          users,
+          totalRooms,
+          availableRooms,
+          bookedRooms,
+          availableRoomsPercentage,
+          bookedRoomsPercentage,
+          revenue,
+        });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send('Internal Server Error');
+      }
+    });
+    
 
     // using aggregate pipeline
     // app.get('/booked-stats', verifyToken, verifyAdmin, async (req, res) => {
@@ -429,10 +480,10 @@ async function run() {
 
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    // await client.db("admin").command({ ping: 1 });
+    // console.log(
+    //   "Pinged your deployment. You successfully connected to MongoDB!"
+    // );
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
@@ -441,8 +492,6 @@ async function run() {
 run().catch(console.dir);
 
 // middleware
-app.use(cors());
-app.use(express.json());
 
 app.get("/", (req, res) => {
   res.send("Assignment-12 is Running ...");
