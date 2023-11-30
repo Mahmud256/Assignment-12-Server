@@ -13,6 +13,7 @@ const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster
 app.use(cors(
   {
   origin: [ 
+     'http://localhost:5173',
     'https://assignment-12-6f6d3.web.app'
   ],
   credentials: true
@@ -32,7 +33,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    //await client.connect();
 
     const apartmentCollection = client.db("assignment-12").collection("apartment");
     const bookCollection = client.db("assignment-12").collection("books");
@@ -40,6 +41,7 @@ async function run() {
     const userCollection = client.db("assignment-12").collection("users");
     const paymentCollection = client.db("assignment-12").collection("payments");
     const announcementCollection = client.db("assignment-12").collection("announcement");
+    const couponCollection = client.db("assignment-12").collection("coupon");
 
 
 
@@ -322,6 +324,19 @@ async function run() {
     });
 
 
+    // ------------------ coupon Releted Api ------------------
+    app.post('/coupon', async (req, res) => {
+      const couponn = req.body;
+      const result = await couponCollection.insertOne(couponn);
+      res.send(result);
+    });
+
+    app.get("/coupon", async (req, res) => {
+      const result = await couponCollection.find().toArray();
+      res.send(result);
+    });
+
+
 
 
 
@@ -403,14 +418,15 @@ async function run() {
       try {
         const users = await userCollection.estimatedDocumentCount();
         const totalRooms = await apartmentCollection.estimatedDocumentCount();
-        const bookedRooms = await paymentCollection.estimatedDocumentCount();
+        const bookedRooms = await agreementCollection.estimatedDocumentCount();
     
         const availableRooms = totalRooms - bookedRooms;
     
         const availableRoomsPercentage = (availableRooms / totalRooms) * 100;
-        const bookedRoomsPercentage = (bookedRooms / totalRooms) * 100;
+        const bookedRoomsPercentage = (bookedRooms / users) * 100;
+
     
-        const result = await paymentCollection.aggregate([
+        const result = await agreementCollection.aggregate([
           {
             $group: {
               _id: null,
@@ -437,6 +453,7 @@ async function run() {
         res.status(500).send('Internal Server Error');
       }
     });
+    
     
 
     // using aggregate pipeline
