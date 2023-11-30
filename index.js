@@ -227,12 +227,12 @@ async function run() {
       res.send(result);
     });
 
-    app.delete('/books/:id', async (req, res) => {
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) }
-      const result = await bookCollection.deleteOne(query);
-      res.send(result);
-    });
+    // app.delete('/books/:id', async (req, res) => {
+    //   const id = req.params.id;
+    //   const query = { _id: new ObjectId(id) }
+    //   const result = await bookCollection.deleteOne(query);
+    //   res.send(result);
+    // });
 
 
     // ------------------ agreement Releted Api ------------------
@@ -285,6 +285,18 @@ async function run() {
       const result = await agreementCollection.deleteOne(query);
       res.send(result);
     });
+
+    // de
+    // if (agree.status ==='active') {
+    //   // Update the role to 'normal' instead of deleting
+    //   const updateDoc = {
+    //     $set: {
+    //       status: 'pending'
+    //     }
+    //   };
+    //   const updateResult = await agreementCollection.updateOne(query, updateDoc);
+    //   return res.send(updateResult);
+    // }
     
 
 
@@ -343,9 +355,9 @@ async function run() {
         }
       };
 
-      const deleteResult = await bookCollection.deleteMany(query);
+      // const deleteResult = await bookCollection.deleteMany(query);
 
-      res.send({ paymentResult, deleteResult });
+      res.send({ paymentResult });
     })
 
 
